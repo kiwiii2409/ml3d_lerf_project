@@ -208,6 +208,7 @@ class LERFModel(NerfactoModel):
             mask = (outputs["relevancy_0"] < 0.5).squeeze()
             outputs[f"composited_{i}"][mask, :] = outputs["rgb"][mask, :]
         return outputs
+    
 
     def _get_outputs_nerfacto(self, ray_samples: RaySamples):
         field_outputs = self.field(ray_samples, compute_normals=self.config.predict_normals)

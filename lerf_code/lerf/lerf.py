@@ -141,6 +141,8 @@ class LERFModel(NerfactoModel):
 
         return outputs
 
+    # Mod1: several changes regarding moving out outputs to .cpu() (and back if required) to avoid OOM during rendering
+    # likely leads to significant slow down but better than crashing i guess
     @torch.no_grad()
     def get_outputs_for_camera_ray_bundle(self, camera_ray_bundle: RayBundle) -> Dict[str, torch.Tensor]:
         """Takes in camera parameters and computes the output of the model.
@@ -170,6 +172,7 @@ class LERFModel(NerfactoModel):
                     if m > best_relevancies[phrase_i]:
                         best_scales[phrase_i] = outputs["best_scales"][phrase_i]
                         best_relevancies[phrase_i] = m
+
         # re-render the max_across outputs using the best scales across all batches
         for i in range(0, num_rays, num_rays_per_chunk):
             start_idx = i
@@ -183,15 +186,20 @@ class LERFModel(NerfactoModel):
                     continue
                 if output_name == "raw_relevancy":
                     for r_id in range(output.shape[0]):
-                        outputs_lists[f"relevancy_{r_id}"].append(output[r_id, ...])
+                        outputs_lists[f"relevancy_{r_id}"].append(output[r_id, ...].cpu())
                 else:
-                    outputs_lists[output_name].append(output)
+                    outputs_lists[output_name].append(output.cpu())
+            del outputs
+
+
         outputs = {}
         for output_name, outputs_list in outputs_lists.items():
             if not torch.is_tensor(outputs_list[0]):
                 # TODO: handle lists of tensors as well
                 continue
             outputs[output_name] = torch.cat(outputs_list).view(image_height, image_width, -1)  # type: ignore
+            if "relevancy" in output_name or output_name == "rgb":
+                outputs[output_name] = outputs[output_name].to(self.device)
         for i in range(len(self.image_encoder.positives)):
             if f"relevancy_{i}" not in outputs:
                     continue
@@ -200,6 +208,7 @@ class LERFModel(NerfactoModel):
             mask = (outputs["relevancy_0"] < 0.5).squeeze()
             outputs[f"composited_{i}"][mask, :] = outputs["rgb"][mask, :]
         return outputs
+    
 
     def _get_outputs_nerfacto(self, ray_samples: RaySamples):
         field_outputs = self.field(ray_samples, compute_normals=self.config.predict_normals)
