@@ -152,6 +152,8 @@ class LERFModel(NerfactoModel):
         Args:
             camera_ray_bundle: ray bundle to calculate outputs over
         """
+        saveMem = False #Mod1, set to false for viewer performance, set to true for rendering a path
+
         # TODO(justin) implement max across behavior
         num_rays_per_chunk = self.config.eval_num_rays_per_chunk
         image_height, image_width = camera_ray_bundle.origins.shape[:2]
@@ -186,10 +188,17 @@ class LERFModel(NerfactoModel):
                     continue
                 if output_name == "raw_relevancy":
                     for r_id in range(output.shape[0]):
-                        outputs_lists[f"relevancy_{r_id}"].append(output[r_id, ...].cpu())
+                        if saveMem:
+                            outputs_lists[f"relevancy_{r_id}"].append(output[r_id, ...].cpu())
+                        else:
+                            outputs_lists[f"relevancy_{r_id}"].append(output[r_id, ...])
                 else:
-                    outputs_lists[output_name].append(output.cpu())
-            del outputs
+                    if saveMem:
+                        outputs_lists[output_name].append(output.cpu())
+                    else:
+                        outputs_lists[output_name].append(output)
+            if saveMem:
+                del outputs
 
 
         outputs = {}
@@ -198,7 +207,8 @@ class LERFModel(NerfactoModel):
                 # TODO: handle lists of tensors as well
                 continue
             outputs[output_name] = torch.cat(outputs_list).view(image_height, image_width, -1)  # type: ignore
-            if "relevancy" in output_name or output_name == "rgb":
+
+            if saveMem and ("relevancy" in output_name or output_name == "rgb"):
                 outputs[output_name] = outputs[output_name].to(self.device)
         for i in range(len(self.image_encoder.positives)):
             if f"relevancy_{i}" not in outputs:

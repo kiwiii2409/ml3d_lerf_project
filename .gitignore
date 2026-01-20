@@ -169,7 +169,6 @@ renders/
 events.out.*
 
 # Data
-data
 !*/data
 
 # Misc
