@@ -84,12 +84,13 @@ class Heatmap_Test(BaseTest):
 
             pred_mask = pred_mask.unsqueeze(0) # 1xHxW
 
-            intersection = (pred_mask * sam_masks_gpu).sum(dim=(1,2)) # take sum per mask (num_mask,)
+            intersection = (pred_mask * sam_masks_gpu).sum(dim=(1,2)) # take sum per mask: (num_mask,)
             union = torch.max(pred_mask, sam_masks_gpu).sum(dim=(1, 2)) # (num_mask,)
 
             ious = intersection / (union + 1e-8) # iou for each mask vs. predicted mask
             
-            best_iou = torch.max(ious).item() # select max
+            # union over obj-masks leads to always bad results, as a multi-object scene which is queried for a single object will always have a low IOU
+            best_iou = torch.max(ious).item() # select max iou (best fitting mask)
             self.results.append(best_iou)
 
             if image_idx not in self.detailed_results:

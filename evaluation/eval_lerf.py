@@ -34,7 +34,7 @@ class LERF_Evaluation():
         self.tests = []
 
 
-    # TODO, given a list of image paths from dataset.image_filenames load all images into a Dict {00177: image_data}
+    # given a list of image paths from dataset.image_filenames load all images into a Dict {00177: image_data}
     def _load_images(self, image_paths):
         loaded_images = {}
         print("Loading evaluation images into memory...")
@@ -48,7 +48,6 @@ class LERF_Evaluation():
             else:
                 key = stem
                 
-            # Load with OpenCV (faster/easier for SAM which expects numpy)
             img = cv2.imread(path_str)
             if img is None:
                 raise Exception(f"Warning: Could not load {path_str}")
