@@ -41,12 +41,8 @@ class Heatmap_Test(BaseTest):
         )
         self.sam_loaded = True
 
-    # TODO:(cahnge this to _get_ground_truth) to call sam on list of images and store in dictionary {filename: mask_dict}
-    # keep sam masks separate (dont merge to object) and calcualte iou with all masks => find best fit as final iou value 
-    # otherwise querying a single object in a scene with multiple objects will always lead to bad performance, as union_obj_mask is larger than single object
 
-
-    # gets: {00177: image_data}
+    # args: {00177: image_data}
     def load_ground_truth(self, image_dict: Dict):
         self._init_sam()
 
@@ -109,10 +105,23 @@ class Heatmap_Test(BaseTest):
             summary["details"] = self.detailed_results if self.detailed_results else {}
 
         return summary
-    
+
+
     def dump_config(self):
         return {
             "name": self.name,
             # "ground_truth_path": str(self.ground_truth_path), # no need as we generate our own gt here
             "threshold": self.relevancy_threshold
         }
+    
+    # store sam_mask as image & heatmap overlayed on rgb image in folder of result. naming should be iamge_idx mask_idx of both files. adapt eval_lerf to store all results as 
+    # - results/
+    # -- 2026-01-28_14-26-45_lerf_mod1_bouquet_2026-01-17_192939/
+    # --- summary.json
+    # --- image_00001.jpg
+    # --- mask_00001.jpg
+    # --- image_00008.jpg
+    # --- mask_00008.jpg
+    # ...
+    def visualize(self):  
+        pass

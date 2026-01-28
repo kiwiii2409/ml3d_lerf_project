@@ -128,6 +128,7 @@ class LERF_Evaluation():
             "meta": meta_data,
             "results": test_results
         }
+        self.output_path.parent.mkdir(parents=True, exist_ok=True) # make sure path exists
         with open(self.output_path, 'w') as f:
             json.dump(final_output, f, indent=4)
         print(f"Results saved to {self.output_path}")
@@ -181,7 +182,7 @@ def cli():
     evaluator = LERF_Evaluation(trimmed_config_path, prompt_path, output_path)
     evaluator.add_test(Heatmap_Test(
         name="Heatmap-SAM-IoU",
-        ground_truth_path=trimmed_dataset_path / "sam", #TODO maybe remove, not reallu used since into of load_grount_truth in Tests
+        # ground_truth_path=trimmed_dataset_path / "sam", #TODO maybe remove, not reallu used since into of load_grount_truth in Tests
         relevancy_threshold=0.5
     ))
     print(f"===== Starting Tests: {[test.name for test in evaluator.tests]} =====")

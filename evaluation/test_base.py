@@ -32,3 +32,7 @@ class BaseTest(ABC):
     def dump_config(self):
         pass
 
+    @abstractmethod
+    def visualize(self):
+        """store visualization of rendered view and e.g. sam mask"""
+        pass
