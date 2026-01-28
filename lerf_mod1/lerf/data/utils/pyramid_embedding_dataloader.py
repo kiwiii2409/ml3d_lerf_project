@@ -43,9 +43,9 @@ class PyramidEmbeddingDataloader(FeatureDataloader):
         masks = self._get_ray_mask(img_points)
 
         if scale is None:
-            return self._random_scales(img_points, masks)
+            return self._random_scales(img_points, masks) # during training ()
         else:
-            return self._uniform_scales(img_points, scale, masks)
+            return self._uniform_scales(img_points, scale, masks) # inference
 
     def _stride_scaler(self, tile_ratio, stride_scaler):
         return np.interp(tile_ratio, [0.05, 0.15], [1.0, stride_scaler])
@@ -94,6 +94,7 @@ class PyramidEmbeddingDataloader(FeatureDataloader):
         pass
 
     # Mod1: add mask values for each ray to data_dict calls, masks shape (B,)
+    # retrieves interpolated embeddings for random scale
     def _random_scales(self, img_points, masks):
         # img_points: (B, 3) # (img_ind, x, y)
         # return: (B, 512), some random scale (between 0, 1)
@@ -147,13 +148,15 @@ class PyramidEmbeddingDataloader(FeatureDataloader):
 
         sam_loader = self.sam_loader
         images = torch.unique(img_points[:, 0]) # get all unique image indices 
+
         for img_idx_tensor in images:
-            img_idx = int(img_idx_tensor.item()) # convert tensor to int to avoid potential problems
+            img_idx = int(img_idx_tensor.item()) # convert tensor to int 
             if img_idx in self.mask_cache:
                 union_mask = self.mask_cache[img_idx]
             else:
                 union_mask = sam_loader.get_masks_for_image(img_idx).float() # yields h x w union-over-masks
                 self.mask_cache[img_idx] = union_mask
+
             rays_idx = (img_points[:, 0] == img_idx) # get all rays belonging to current image
             points = img_points[rays_idx] # n x 3 with N being the number of rays belonging to curr img
 
@@ -162,9 +165,6 @@ class PyramidEmbeddingDataloader(FeatureDataloader):
 
             img_masks = union_mask[points_x, points_y] # indexing [row,col]
 
-            print(f"mask: {img_masks.shape}")
-            print(f"rays idx: {rays_idx.shape}")
-            print(f"mask_acc: {mask_accumulator.shape}")
             mask_accumulator[rays_idx] = img_masks.to(self.device)
 
         return mask_accumulator

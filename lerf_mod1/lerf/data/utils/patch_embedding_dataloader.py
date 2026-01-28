@@ -140,7 +140,6 @@ class PatchEmbeddingDataloader(FeatureDataloader):
 
         # merge into batch  (2*n_patches x 3 x k x k)
         combined_tiles = torch.cat([obj_tiles, bgr_tiles], dim=0).to(self.device)
-
         with torch.no_grad():
             combined_embeds = self.model.encode_image(combined_tiles) # (2* n_patches x 512)
         combined_embeds /= combined_embeds.norm(dim=-1, keepdim=True)

@@ -1,0 +1,6 @@
+{
+    "default": {
+        "positives": ["jake from adventure time", "camera"],
+        "negatives": ["car"]
+    }
+}
