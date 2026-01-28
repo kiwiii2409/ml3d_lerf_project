@@ -15,7 +15,10 @@ project/
 ├── lerf_code/
 └── lerf_mod1/
 ```
-
+**NOTE** Evaluation size will depend on the value set in `lerf_config.py` before training
+```python
+    dataparser=NerfstudioDataParserConfig(train_split_fraction=0.99),
+```
 
 ### Basic Command
 

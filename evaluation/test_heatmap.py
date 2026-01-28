@@ -114,7 +114,7 @@ class Heatmap_Test(BaseTest):
             "threshold": self.relevancy_threshold
         }
     
-    # store sam_mask as image & heatmap overlayed on rgb image in folder of result. naming should be iamge_idx mask_idx of both files. adapt eval_lerf to store all results as 
+    # TODO: store sam_mask as image & heatmap overlayed on rgb image in folder of result. naming should be iamge_idx mask_idx of both files. adapt eval_lerf to store all results as 
     # - results/
     # -- 2026-01-28_14-26-45_lerf_mod1_bouquet_2026-01-17_192939/
     # --- summary.json

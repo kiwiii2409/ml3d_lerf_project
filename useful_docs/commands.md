@@ -1,7 +1,3 @@
-- password: 
-floating-Backward-19-springs
-
-
 - fix for errors to run ns-install-cli: typing in `lerf.py`, `lerf_datamanager.py` into more precise types
   - `lerf.py:`
   ```py
