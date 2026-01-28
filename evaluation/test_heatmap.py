@@ -1,11 +1,14 @@
 import numpy as np 
 from pathlib import Path
-from typing import Optional
-
+from typing import Optional, Dict
+from tqdm import tqdm 
 import torch
 from test_base import BaseTest
 
-
+try:
+    from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
+except ImportError:
+    print("Segement anything not installed")
 
 
 
@@ -16,26 +19,56 @@ class Heatmap_Test(BaseTest):
 
         self.results = [] # store iou per image per prompt
         self.detailed_results = {}
+        self.ground_truth = {} # Stores { '00177': List[Tensor_Masks] }
+
+        self.sam_loaded = False
+        self.mask_generator = None
+
+
+
+    def _init_sam(self):
+        if self.sam_loaded:
+            return
+        sam_ckpt = "/cluster/51/kzhou/sam_weights/sam_vit_h_4b8939.pth"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        sam = sam_model_registry["vit_h"](checkpoint=sam_ckpt)
+        sam.to(device=device)
+
+        self.mask_generator = SamAutomaticMaskGenerator(
+            model=sam,
+            points_per_side=32,
+            min_mask_region_area=100, # remove small disconnected patches (smaller than 100)
+        )
+        self.sam_loaded = True
 
     # TODO:(cahnge this to _get_ground_truth) to call sam on list of images and store in dictionary {filename: mask_dict}
     # keep sam masks separate (dont merge to object) and calcualte iou with all masks => find best fit as final iou value 
     # otherwise querying a single object in a scene with multiple objects will always lead to bad performance, as union_obj_mask is larger than single object
-    def _load_sam_masks(self, image_idx):
-        path = self.ground_truth_path / f"mask_{image_idx:05d}.npz"
-        try:
-            data = np.load(path)
-            if 'masks' in data:
-                return torch.from_numpy(data['masks'])
-        except Exception:
-            raise Exception(f"Invalid File Path to SAM Masks: {path}")
-            
-    def evaluate_image(self, image_idx: int, rendered_layers: dict, model, gt_meta: dict):
-        sam_mask = self._load_sam_masks(image_idx) # also shape HxW but maybe different
+
+
+    # gets: {00177: image_data}
+    def load_ground_truth(self, image_dict: Dict):
+        self._init_sam()
+
+        print(f"Generating SAM masks for {len(image_dict)} evaluation images...")
+        for image_idx, image in tqdm(image_dict.items(), desc="sam_eval"):
+            # TODO: run sam and store in self.ground_truth. again as dict with {image_idx}
+            masks = self.mask_generator.generate(image)
+            if len(masks) > 0:
+                
+                mask_stack = np.stack([m['segmentation'] for m in masks])# (num_masks x h x w)
+                self.ground_truth[image_idx] = torch.from_numpy(mask_stack)
+            else:
+                self.ground_truth[image_idx] = None
+        print("SAM generation complete")
         
+    def evaluate_image(self, image_idx: str, rendered_layers: dict, model, gt_meta: dict):
+        sam_masks = self.ground_truth.get(image_idx)        
+
         target_prompts = gt_meta["positives"]
 
-
         for prompt in target_prompts:
+             # index of prompt in positives list == relevacy layer
             promtp_idx = model.image_encoder.positives.index(prompt)
             relevancy_key = f"relevancy_{promtp_idx}"
             relevancy_map = rendered_layers[relevancy_key].squeeze() 
@@ -43,23 +76,25 @@ class Heatmap_Test(BaseTest):
 
             print(f"Image Idx: {image_idx} with prompt: {prompt}")
             print(f"Shape PredMask: {pred_mask.shape}")
-            print(f"Shape SamMask: {sam_mask.shape}")
-            if sam_mask.shape != pred_mask.shape: # not sure if needed
-                raise Exception(f"Invalid shape! sam_mask: {sam_mask.shape} vs. pred_mask: {pred_mask.shape}")
+            print(f"Shape SamMask: {sam_masks[0].shape}")
+            if sam_masks[0].shape != pred_mask.shape: # not sure if needed
+                raise Exception(f"Invalid shape! sam_mask: {sam_masks[0].shape} vs. pred_mask: {pred_mask.shape}")
             
-            binary_sam_mask = (sam_mask > 0.5).float().to(pred_mask.device)
+            sam_masks_gpu = (sam_masks).float().to(pred_mask.device)
 
-            intersection = (pred_mask * binary_sam_mask).sum()
-            union = torch.max(pred_mask, binary_sam_mask).sum()            
+            pred_mask = pred_mask.unsqueeze(0) # 1xHxW
 
-            iou = intersection / (union + 1e-8)
-            iou_val = iou.item()
+            intersection = (pred_mask * sam_masks_gpu).sum(dim=(1,2)) # take sum per mask (num_mask,)
+            union = torch.max(pred_mask, sam_masks_gpu).sum(dim=(1, 2)) # (num_mask,)
 
-            self.results.append(iou_val)
+            ious = intersection / (union + 1e-8) # iou for each mask vs. predicted mask
+            
+            best_iou = torch.max(ious).item() # select max
+            self.results.append(best_iou)
 
             if image_idx not in self.detailed_results:
                 self.detailed_results[image_idx] = {}
-            self.detailed_results[image_idx][prompt] = iou_val
+            self.detailed_results[image_idx][prompt] = best_iou
         
     def summarize(self, verbose = False):
         if not self.results:
@@ -77,6 +112,6 @@ class Heatmap_Test(BaseTest):
     def dump_config(self):
         return {
             "name": self.name,
-            "ground_truth_path": str(self.ground_truth_path),
+            # "ground_truth_path": str(self.ground_truth_path), # no need as we generate our own gt here
             "threshold": self.relevancy_threshold
         }

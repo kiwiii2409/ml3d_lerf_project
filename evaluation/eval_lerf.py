@@ -4,8 +4,8 @@ import torch
 import argparse
 import datetime
 from pathlib import Path
-
-
+import cv2
+from tqdm import tqdm 
 from nerfstudio.utils.eval_utils import eval_setup
 from test_base import BaseTest
 from test_heatmap import Heatmap_Test
@@ -17,42 +17,70 @@ class LERF_Evaluation():
         self.prompt_path = prompt_path
         self.output_path = output_path
 
-        _, self.pipeline, _, _ = eval_setup(
-            config_path,
-            test_mode="test"
-        ) # returns Loaded config, pipeline module, corresponding checkpoint, and step
+        # returns Loaded config, pipeline module, corresponding checkpoint, and step
+        _, self.pipeline, _, _ = eval_setup(config_path,test_mode="test") 
         self.pipeline.model.eval()
 
+        # moved dataset to init, allows earlier groun_truth loading
+        self.eval_dataset = self.pipeline.datamanager.eval_dataset 
+        
+        # loads abs path of images selected for eval {00177: image_data}
+        self.eval_images_dict = self._load_images(self.eval_dataset.image_filenames)
+
+        # load pos & neg prompts
         with open(self.prompt_path, 'r') as f:
             self.prompt_data = json.load(f)
 
         self.tests = []
 
+
+    # TODO, given a list of image paths from dataset.image_filenames load all images into a Dict {00177: image_data}
+    def _load_images(self, image_paths):
+        loaded_images = {}
+        print("Loading evaluation images into memory...")
+        for path in image_paths:
+            path_str = str(path)
+            
+            # frame_00177.jpg -> 00177
+            stem = path.stem # 'frame_00177'
+            if '_' in stem:
+                key = stem.split('_')[-1] # returns 00177
+            else:
+                key = stem
+                
+            # Load with OpenCV (faster/easier for SAM which expects numpy)
+            img = cv2.imread(path_str)
+            if img is None:
+                raise Exception(f"Warning: Could not load {path_str}")
+                
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            loaded_images[key] = img
+            
+        print(f"Loaded {len(loaded_images)} images.")
+        return loaded_images
+    
     def add_test(self, new_test: BaseTest):
+        new_test.load_ground_truth(self.eval_images_dict)
         self.tests.append(new_test)
+        
 
     def run_tests(self):
-        dataset = self.pipeline.datamanager.eval_dataset
-        print(self.pipeline.datamanager.train_dataset.image_filenames)
-        print(dataset.image_filenames)
-        #TODO: add logic to precalculate sam masks for all images using _get_ground_truth fucntion in heatmap test and store there in dict corresponding to image_idx
-        # add method as _get_ground_truth and call for each test via loop. either loads or generates GT using separate script
-        num_images = len(dataset)
+        num_images = len(self.eval_dataset)
         with torch.no_grad():
-            for i in range(num_images):
+            for i in tqdm(range(num_images), desc="eval"):
                 print(f"Processing {i + 1}/{num_images} image")
-                camera = dataset.cameras[i: i + 1].to(self.pipeline.device)
-                image_filename = dataset.image_filenames[i] # returns e.g. /cluster/51/kzhou/datasets/bouquet/images/frame_00177.jpg
-                image_idx = str(image_filename)[-9:-4] # just 00177
+                camera = self.eval_dataset.cameras[i: i + 1].to(self.pipeline.device)
+                image_filename = self.eval_dataset.image_filenames[i] # returns e.g. /cluster/51/kzhou/datasets/bouquet/images/frame_00177.jpg
+                stem = image_filename.stem
+                if '_' in stem:
+                    image_idx = stem.split('_')[-1]
+                else:
+                    image_idx = stem
 
-                key = str(image_idx)
-                if key in self.prompt_data:
-                    gt_meta = self.prompt_data[key] # in case specific items were specified for 
+                if image_idx in self.prompt_data:
+                    gt_meta = self.prompt_data[image_idx] # in case specific items were specified for 
                 else:
                     gt_meta = self.prompt_data.get("default", {})
-
-                if not gt_meta:
-                    continue
 
                 # existing items you want to highlight
                 positives = gt_meta.get("positives", [])
@@ -65,20 +93,16 @@ class LERF_Evaluation():
 
                 self.pipeline.model.image_encoder.set_positives(all_prompts)
                 
-                ray_bundle = camera.generate_rays(
-                    camera_indices=0, keep_shape=True)
+                ray_bundle = camera.generate_rays(camera_indices=0, keep_shape=True)
                 
                 # dict with 'rgb' 'depth' 'relevancy_0' 'relevancy_1' ... (one relevancy for each prompt)
                 # TODO: add parameter as toggle in get_output_for_camera_ray_bundle to speed up evaluation (as long as we clear memory frequently it should be fine)
-                rendered_layers = self.pipeline.model.get_outputs_for_camera_ray_bundle(
-                    ray_bundle)
+                rendered_layers = self.pipeline.model.get_outputs_for_camera_ray_bundle(ray_bundle)
                 print(f"Starting test for {i+1} image:")
                 for test in self.tests:
                     test.evaluate_image(
-                        int(image_idx), self.pipeline.model, gt_meta, rendered_layers)
-
-
-
+                        image_idx, rendered_layers, self.pipeline.model, gt_meta )
+                    
         self._save_results()
 
     def _save_results(self):
@@ -86,11 +110,11 @@ class LERF_Evaluation():
         print()
         print("===== Evaluation finished =====")
         for test in self.tests:
-            test_results[test.name] = test.summarize()
+            test_results[test.name] = test.summarize(verbose=True)
+            
             print(f"{test.name} Results:")
-            print(test_results[test.name])
+            print(test.summarize())
             print("-" * 50)
-        # TODO add config information for reproducability
         meta_data = {
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "paths": {
@@ -146,22 +170,19 @@ def cli():
         output_path = args.output_path
 
     # Swtich working directory to the one specified in the --load_config path. Sets the correct working dir for the relative paths in the datamanagers (otherwise files are stored in wrong directory + no cache)
-
     print(f"===== Setting up Tests =====")
     os.chdir(version_dir)
     print(f"Switching working directory to: {os.getcwd()}")
 
 
-    # TODO: fix jank. remove first folder from path to avoid ~/project/lerf_code/lerf_code/outputs/bouquet/lerf/2026-01-17_192939/config.yml due to changed working directory
+    # remove first folder from path to avoid ~/project/lerf_code/lerf_code/outputs/bouquet/lerf/2026-01-17_192939/config.yml due to changed working directory
     trimmed_config_path = Path(*config_path.parts[1:])
     trimmed_dataset_path = Path(*dataset_dir.parts[1:])
-    print(trimmed_config_path)
-    print(trimmed_dataset_path)
     
     evaluator = LERF_Evaluation(trimmed_config_path, prompt_path, output_path)
     evaluator.add_test(Heatmap_Test(
         name="Heatmap-SAM-IoU",
-        ground_truth_path=trimmed_dataset_path / "sam",
+        ground_truth_path=trimmed_dataset_path / "sam", #TODO maybe remove, not reallu used since into of load_grount_truth in Tests
         relevancy_threshold=0.5
     ))
     print(f"===== Starting Tests: {[test.name for test in evaluator.tests]} =====")

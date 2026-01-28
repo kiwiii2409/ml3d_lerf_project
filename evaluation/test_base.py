@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 
 class BaseTest(ABC):
@@ -12,17 +12,23 @@ class BaseTest(ABC):
         self.name = name
         self.ground_truth_path = ground_truth_path if ground_truth_path else None
 
+
+
+
     @abstractmethod
-    def evaluate_image(self, image_idx: int,rendered_layers: dict, model, gt_meta: dict):
-        """eval for a single image, load ground truth here"""
+    def load_ground_truth(self, image_dict: Dict):
         pass
 
     @abstractmethod
-    def summarize(self):
+    def evaluate_image(self, image_idx: int,rendered_layers: dict, model, gt_meta: dict):
+        """eval for a single image"""
+        pass
+
+    @abstractmethod
+    def summarize(self, verbose):
         pass
 
     @abstractmethod
     def dump_config(self):
         pass
 
-    # add _get_gt
