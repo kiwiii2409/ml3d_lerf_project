@@ -67,11 +67,10 @@ class LERF_Evaluation():
         num_images = len(self.eval_dataset)
         with torch.no_grad():
             for i in tqdm(range(num_images), desc="eval"):
-                print(f"Processing {i + 1}/{num_images} image")
                 camera = self.eval_dataset.cameras[i: i + 1].to(self.pipeline.device)
                 image_filename = self.eval_dataset.image_filenames[i] # returns e.g. /cluster/51/kzhou/datasets/bouquet/images/frame_00177.jpg
                 stem = image_filename.stem
-                if '_' in stem:
+                if '_' in stem: # image_idx is a string!!
                     image_idx = stem.split('_')[-1]
                 else:
                     image_idx = stem
@@ -97,7 +96,6 @@ class LERF_Evaluation():
                 # dict with 'rgb' 'depth' 'relevancy_0' 'relevancy_1' ... (one relevancy for each prompt)
                 # TODO: add parameter as toggle in get_output_for_camera_ray_bundle to speed up evaluation (as long as we clear memory frequently it should be fine)
                 rendered_layers = self.pipeline.model.get_outputs_for_camera_ray_bundle(ray_bundle)
-                print(f"Starting test for {i+1} image:")
                 for test in self.tests:
                     test.evaluate_image(
                         image_idx, rendered_layers, self.pipeline.model, gt_meta )
@@ -128,8 +126,8 @@ class LERF_Evaluation():
             "meta": meta_data,
             "results": test_results
         }
-        self.output_path.parent.mkdir(parents=True, exist_ok=True) # make sure path exists
-        with open(self.output_path, 'w') as f:
+        self.output_path.mkdir(exist_ok=True)
+        with open(self.output_path / f"results.json", 'w') as f:
             json.dump(final_output, f, indent=4)
         print(f"Results saved to {self.output_path}")
         print("=" * 31)
@@ -154,7 +152,7 @@ def cli():
     version_name = version_dir.name
     model_timestamp = model_timestamp_dir.name
 
-    curr_timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")    
+    curr_timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")    
 
     # define prompts to test lerf on
     # positives: existing items you want to highlight, negatives: non-existing items to test the model
@@ -165,7 +163,7 @@ def cli():
 
 
     if args.output_path == None:
-        output_path = Path(f"../evaluation/results/{curr_timestamp}_{version_name}_{dataset_name}_{model_timestamp}.json")
+        output_path = Path(f"../evaluation/results/{curr_timestamp}_{version_name}_{dataset_name}_{model_timestamp}/")
     else:
         output_path = args.output_path
 
@@ -173,6 +171,8 @@ def cli():
     print(f"===== Setting up Tests =====")
     os.chdir(version_dir)
     print(f"Switching working directory to: {os.getcwd()}")
+
+    output_path.mkdir(exist_ok=True)
 
 
     # remove first folder from path to avoid ~/project/lerf_code/lerf_code/outputs/bouquet/lerf/2026-01-17_192939/config.yml due to changed working directory
@@ -182,7 +182,8 @@ def cli():
     evaluator = LERF_Evaluation(trimmed_config_path, prompt_path, output_path)
     evaluator.add_test(Heatmap_Test(
         name="Heatmap-SAM-IoU",
-        # ground_truth_path=trimmed_dataset_path / "sam", #TODO maybe remove, not reallu used since into of load_grount_truth in Tests
+        ground_truth_path=None, #keep for completion, not used here cuz masks generated in test class
+        output_path=output_path / "IoU", # specify the path for visualizing the results, only visualizes if this arg is given
         relevancy_threshold=0.5
     ))
     print(f"===== Starting Tests: {[test.name for test in evaluator.tests]} =====")

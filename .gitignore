@@ -193,3 +193,5 @@ camera_paths/
 .vscode
 datasets/
 notes
+
+evaluation/results

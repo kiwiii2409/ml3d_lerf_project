@@ -4,13 +4,18 @@ from typing import Optional, Dict
 
 
 class BaseTest(ABC):
-    def __init__(self, name: str, ground_truth_path: Optional[Path] = None):
+    def __init__(self, name: str, ground_truth_path: Optional[Path] = None, output_path: Optional[Path]=None):
         """
         :param name: Name of the test
         :param ground_truth_root: Path to the specific folder/file for this metric's GT
         """
         self.name = name
-        self.ground_truth_path = ground_truth_path if ground_truth_path else None
+        self.ground_truth_path = ground_truth_path 
+        self.output_path = output_path
+
+        if output_path:
+            self.output_path.mkdir(exist_ok=True)
+
 
 
 

@@ -1,0 +1,6 @@
+{
+    "default": {
+        "positives": ["Bell pepper", "Courgette"],
+        "negatives": ["car"]
+    }
+}

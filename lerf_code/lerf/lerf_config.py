@@ -29,7 +29,7 @@ lerf_method = MethodSpecification(
         mixed_precision=True,
         pipeline=LERFPipelineConfig(
             datamanager=LERFDataManagerConfig(
-                dataparser=NerfstudioDataParserConfig(train_split_fraction=0.8), # TODO: changed down from 0.99
+                dataparser=NerfstudioDataParserConfig(train_split_fraction=0.9), # TODO: changed down from 0.99
                 train_num_rays_per_batch=4096,
                 eval_num_rays_per_batch=4096,
             ),

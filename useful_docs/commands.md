@@ -23,6 +23,7 @@
 - convert raw vidoe to proper dataset (runs colmap to get camera location): `ns-process-data video --data path/to/my/scan.mp4 --output-dir path/to/my/processed_scan --num-frames-target 200`
   - example data uses around 200-500 images
 
+
 ---
 ### Training 
 - start training on bouquet datset with viewer active: `ns-train lerf --data /cluster/51/kzhou/datasets/bouquet --vis viewer`
@@ -47,6 +48,9 @@
 - see gpu usage (refresh every 1 seconds):
   - `watch -n 1 nvidia-smi`
 
+
+- download entire results folder to local machine:
+  - `scp -r ml3d:project/evaluation/results/ CodingProjects/ml3d_project/evaluation/`
 ---
 
 
